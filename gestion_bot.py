@@ -241,7 +241,7 @@ async def on_member_join(member):
             description=f"Bienvenue {member.mention} sur **{member.guild.name}** !\nNous sommes maintenant {member.guild.member_count} membres.",
             color=0x00FF00
         )
-        embed.set_image(url="https://i.imgur.com/vHq4R7K.gif") 
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1513873145910530208/1521214368082296842/896D0229-19B8-4AD8-BD18-48C1FB5F1651.gif?ex=6a4404c8&is=6a42b348&hm=f888ab2f293ed8b23ce2b67a6c8a382e0f4bfd62293a5dad02a3d1ca3d9518e3&") 
         embed.set_thumbnail(url=member.display_avatar.url)
         await salon_bienvenue.send(embed=embed)
 
