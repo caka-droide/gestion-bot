@@ -31,6 +31,20 @@ TOKEN = os.environ.get("DISCORD_TOKEN_GESTION")
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# Configuration des salons importants
+SALON_BIENVENUE_ID = 1521181917095923857
+SALON_LOGS_ID = 1521181898725134419
+CATEGORY_TICKETS_ID = 1521181911773348010
+
+# Fonction utilitaire pour envoyer un log automatique dans le salon dédié
+async def envoyer_log(guild, titre, description, couleur=0x7289DA, auteur=None):
+    salon_logs = guild.get_channel(SALON_LOGS_ID)
+    if salon_logs:
+        embed = discord.Embed(title=titre, description=description, color=couleur, timestamp=datetime.now())
+        if auteur:
+            embed.set_footer(text=f"Action par : {auteur.name}", icon_url=auteur.display_avatar.url)
+        await salon_logs.send(embed=embed)
+
 # ── Fichiers de données ───────────────────────────────────────────────────────
 FILES = {
     "levels": "levels.json",
@@ -125,6 +139,7 @@ class CloseButton(discord.ui.View):
     @discord.ui.button(label="Fermer le ticket", style=discord.ButtonStyle.danger, custom_id="fermer_ticket_btn", emoji="🔒")
     async def bouton_fermer(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("🔒 **Le ticket va se fermer et être supprimé dans 5 secondes...**")
+        await envoyer_log(interaction.guild, "🔒 Ticket Fermé", f"Le salon `{interaction.channel.name}` a été supprimé.", 0xFF0000, interaction.user)
         await asyncio.sleep(5)
         try:
             await interaction.channel.delete()
@@ -143,8 +158,7 @@ class TicketButton(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
         
-        CATEGORY_ID = 1521181911773348010
-        category = guild.get_channel(CATEGORY_ID)
+        category = guild.get_channel(CATEGORY_TICKETS_ID)
 
         nom_salon = f"ticket-{interaction.user.name.lower()}"
         salon_existant = discord.utils.get(guild.text_channels, name=nom_salon)
@@ -168,8 +182,10 @@ class TicketButton(discord.ui.View):
                 description=f"Bonjour {interaction.user.mention},\nExplique ton problème ici. L'équipe du staff te répondra dès que possible.\n\n*Pour fermer ce ticket, clique sur le bouton rouge ci-dessous.*",
                 color=0x2b2d31
             )
-            # On envoie l'embed ET le bouton de fermeture dans le nouveau salon
             await ticket_channel.send(embed=embed, view=CloseButton())
+            
+            # Log de l'ouverture
+            await envoyer_log(guild, "🎫 Ticket Ouvert", f"Ticket créé par {interaction.user.mention} ({ticket_channel.mention})", 0x00FF00, interaction.user)
 
         except discord.Forbidden:
             await interaction.followup.send("❌ Je n'ai pas la permission de **Gérer les salons** ou de **Gérer les rôles**.", ephemeral=True)
@@ -181,7 +197,7 @@ class TicketButton(discord.ui.View):
 async def on_ready():
     print(f"✅ Bot connecté : {bot.user}")
     bot.add_view(TicketButton())
-    bot.add_view(CloseButton()) # On enregistre aussi le bouton de fermeture pour qu'il marche après redémarrage
+    bot.add_view(CloseButton())
     
     try:
         synced = await bot.tree.sync()
@@ -224,7 +240,6 @@ async def on_invite_create(invite):
 @bot.event
 async def on_member_join(member):
     gid = str(member.guild.id)
-    SALON_BIENVENUE_ID = 1521181917095923857
     
     try:
         await member.send(
@@ -241,7 +256,7 @@ async def on_member_join(member):
             description=f"Bienvenue {member.mention} sur **{member.guild.name}** !\nNous sommes maintenant {member.guild.member_count} membres.",
             color=0x00FF00
         )
-        embed.set_image(url="https://cdn.discordapp.com/attachments/1513873145910530208/1521214368082296842/896D0229-19B8-4AD8-BD18-48C1FB5F1651.gif?ex=6a4404c8&is=6a42b348&hm=f888ab2f293ed8b23ce2b67a6c8a382e0f4bfd62293a5dad02a3d1ca3d9518e3&") 
+        embed.set_image(url="https://i.imgur.com/vHq4R7K.gif") 
         embed.set_thumbnail(url=member.display_avatar.url)
         await salon_bienvenue.send(embed=embed)
 
@@ -273,7 +288,6 @@ async def on_member_join(member):
 async def on_member_remove(member):
     gid = str(member.guild.id)
     uid = str(member.id)
-    SALON_BIENVENUE_ID = 1521181917095923857
     
     salon_depart = member.guild.get_channel(SALON_BIENVENUE_ID) 
     if salon_depart:
@@ -314,6 +328,27 @@ async def check_mutes():
     if to_unmute:
         save("mutes", mutes_data)
 
+# ── Commandes de Logs ────────────────────────────────────────────────────────
+@bot.tree.command(name="log", description="Affiche les dernières actions ou redirige vers le salon des logs")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def log_cmd(interaction: discord.Interaction):
+    salon_logs = interaction.guild.get_channel(SALON_LOGS_ID)
+    if not salon_logs:
+        await interaction.response.send_message("❌ Le salon de logs configuré est introuvable. Modifie l'ID dans le code.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="📋 Suivi des Logs du Serveur",
+        description=f"Toutes les actions de modération et d'activité du bot sont enregistrées directement dans {salon_logs.mention}.\n\n"
+                    f"**Ce qui est tracé :**\n"
+                    f"• 🎫 Ouvertures et fermetures de tickets\n"
+                    f"• ⚠️ Avertissements (Warns)\n"
+                    f"• 🔇 Mutes et Unmutes\n"
+                    f"• 👢 Expulsions (Kick) & Bannissements (Ban)",
+        color=0x7289DA
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 # ── Commandes Nouvelles (Tickets, Clear) ──────────────────────────────────────
 @bot.tree.command(name="setup_ticket", description="Configure le panel pour créer des tickets")
 @app_commands.checks.has_permissions(administrator=True)
@@ -336,6 +371,7 @@ async def clear_cmd(interaction: discord.Interaction, montant: int = 1000, salon
     try:
         deleted = await cible.purge(limit=montant)
         await interaction.followup.send(f"✅ `{len(deleted)}` messages ont été supprimés dans {cible.mention}.")
+        await envoyer_log(interaction.guild, "🧹 Salon Nettoyé", f"`{len(deleted)}` messages ont été purgés dans {cible.mention}.", 0x3498DB, interaction.user)
     except discord.Forbidden:
         await interaction.followup.send("❌ Je n'ai pas la permission de gérer les messages dans ce salon.")
     except Exception as e:
@@ -431,6 +467,8 @@ async def warn_cmd(interaction: discord.Interaction, membre: discord.Member, rai
     embed.add_field(name="Raison", value=raison, inline=True)
     embed.add_field(name="Total warns", value=str(nb), inline=True)
     await interaction.response.send_message(embed=embed)
+    
+    await envoyer_log(interaction.guild, "⚠️ Membre Warn", f"Membre : {membre.mention}\nRaison : {raison}\nTotal : {nb} warn(s)", 0xFFA500, interaction.user)
     try:
         await membre.send(f"⚠️ Tu as reçu un avertissement sur **{interaction.guild.name}**\nRaison : {raison}\nTotal : {nb} warn(s)")
     except:
@@ -461,6 +499,7 @@ async def clearwarns_cmd(interaction: discord.Interaction, membre: discord.Membe
         warns_data[gid][uid] = []
         save("warns", warns_data)
     await interaction.response.send_message(f"✅ Warns de {membre.mention} supprimés.", ephemeral=True)
+    await envoyer_log(interaction.guild, "✨ Warns Effacés", f"Les avertissements de {membre.mention} ont été remis à zéro.", 0x2ECC71, interaction.user)
 
 @bot.tree.command(name="mute", description="Rendre muet un membre")
 @app_commands.describe(membre="Le membre", duree="Durée en minutes (0 = permanent)", raison="La raison")
@@ -486,6 +525,8 @@ async def mute_cmd(interaction: discord.Interaction, membre: discord.Member, dur
     embed.add_field(name="Durée", value=duree_str, inline=True)
     embed.add_field(name="Raison", value=raison, inline=True)
     await interaction.response.send_message(embed=embed)
+    
+    await envoyer_log(interaction.guild, "🔇 Membre Mute", f"Membre : {membre.mention}\nDurée : {duree_str}\nRaison : {raison}", 0xE74C3C, interaction.user)
 
 @bot.tree.command(name="unmute", description="Retirer le mute d'un membre")
 @app_commands.describe(membre="Le membre")
@@ -500,6 +541,7 @@ async def unmute_cmd(interaction: discord.Interaction, membre: discord.Member):
         del mutes_data[gid][uid]
         save("mutes", mutes_data)
     await interaction.response.send_message(f"✅ {membre.mention} n'est plus muet.", ephemeral=True)
+    await envoyer_log(interaction.guild, "🔊 Membre Unmute", f"Le rôle Muted a été retiré à {membre.mention}.", 0x2ECC71, interaction.user)
 
 @bot.tree.command(name="kick", description="Expulser un membre")
 @app_commands.describe(membre="Le membre", raison="La raison")
@@ -510,6 +552,7 @@ async def kick_cmd(interaction: discord.Interaction, membre: discord.Member, rai
     embed.add_field(name="Membre", value=str(membre), inline=True)
     embed.add_field(name="Raison", value=raison, inline=True)
     await interaction.response.send_message(embed=embed)
+    await envoyer_log(interaction.guild, "👢 Membre Kické", f"Pseudo : **{membre}**\nRaison : {raison}", 0xE67E22, interaction.user)
 
 @bot.tree.command(name="ban", description="Bannir un membre")
 @app_commands.describe(membre="Le membre", raison="La raison")
@@ -520,6 +563,7 @@ async def ban_cmd(interaction: discord.Interaction, membre: discord.Member, rais
     embed.add_field(name="Membre", value=str(membre), inline=True)
     embed.add_field(name="Raison", value=raison, inline=True)
     await interaction.response.send_message(embed=embed)
+    await envoyer_log(interaction.guild, "🔨 Membre Banni", f"Pseudo : **{membre}**\nRaison : {raison}", 0x95A5A6, interaction.user)
 
 @bot.tree.command(name="unban", description="Débannir un membre")
 @app_commands.describe(user_id="L'ID du membre banni")
@@ -529,6 +573,7 @@ async def unban_cmd(interaction: discord.Interaction, user_id: str):
         user = await bot.fetch_user(int(user_id))
         await interaction.guild.unban(user)
         await interaction.response.send_message(f"✅ {user} a été débanni.", ephemeral=True)
+        await envoyer_log(interaction.guild, "🔓 Membre Débanni", f"ID de l'utilisateur : `{user_id}` (Nom : {user})", 0x2ECC71, interaction.user)
     except:
         await interaction.response.send_message("❌ Utilisateur introuvable ou pas banni.", ephemeral=True)
 
