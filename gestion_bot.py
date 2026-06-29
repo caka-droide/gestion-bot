@@ -128,17 +128,19 @@ class TicketButton(discord.ui.View):
 
     @discord.ui.button(label="Ouvrir un ticket", style=discord.ButtonStyle.primary, custom_id="creer_ticket_btn", emoji="🎫")
     async def bouton_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # On dit à Discord de patienter pour éviter le message d'échec rouge
+        await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
         
-        # ID de la catégorie pour les tickets
-        CATEGORY_ID = 1521181952697172161
+        # ID de la catégorie où les tickets vont se créer
+        CATEGORY_ID = 1521181911773348010
         category = guild.get_channel(CATEGORY_ID)
 
         nom_salon = f"ticket-{interaction.user.name.lower()}"
         salon_existant = discord.utils.get(guild.text_channels, name=nom_salon)
         
         if salon_existant:
-            await interaction.response.send_message(f"❌ Tu as déjà un ticket ouvert : {salon_existant.mention}", ephemeral=True)
+            await interaction.followup.send(f"❌ Tu as déjà un ticket ouvert : {salon_existant.mention}", ephemeral=True)
             return
 
         overwrites = {
@@ -147,15 +149,22 @@ class TicketButton(discord.ui.View):
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
         
-        ticket_channel = await guild.create_text_channel(name=nom_salon, category=category, overwrites=overwrites)
-        await interaction.response.send_message(f"✅ Ton ticket a été créé : {ticket_channel.mention}", ephemeral=True)
-        
-        embed = discord.Embed(
-            title="🎫 Nouveau Ticket",
-            description=f"Bonjour {interaction.user.mention},\nExplique ton problème ici. L'équipe du staff te répondra dès que possible.",
-            color=0x2b2d31
-        )
-        await ticket_channel.send(embed=embed)
+        try:
+            # Création du salon textuel directement rangé dans la bonne catégorie
+            ticket_channel = await guild.create_text_channel(name=nom_salon, category=category, overwrites=overwrites)
+            await interaction.followup.send(f"✅ Ton ticket a été créé : {ticket_channel.mention}", ephemeral=True)
+            
+            embed = discord.Embed(
+                title="🎫 Nouveau Ticket",
+                description=f"Bonjour {interaction.user.mention},\nExplique ton problème ici. L'équipe du staff te répondra dès que possible.",
+                color=0x2b2d31
+            )
+            await ticket_channel.send(embed=embed)
+
+        except discord.Forbidden:
+            await interaction.followup.send("❌ Je n'ai pas la permission de **Gérer les salons** ou de **Gérer les rôles**.", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Impossible de créer le ticket. Erreur : `{e}`", ephemeral=True)
 
 # ── Initialisation ────────────────────────────────────────────────────────────
 @bot.event
@@ -206,7 +215,7 @@ async def on_member_join(member):
     gid = str(member.guild.id)
     SALON_BIENVENUE_ID = 1521181917095923857
     
-    # 1. Message privé (DM)
+    # 1. Message privé personnalisé (DM)
     try:
         await member.send(
             f"Salut {member.mention} ! Bienvenue sur **{member.guild.name}** ! 🎉\n"
@@ -215,7 +224,7 @@ async def on_member_join(member):
     except discord.Forbidden:
         print(f"Impossible d'envoyer un DM de bienvenue à {member.display_name} (DMs fermés).")
 
-    # 2. Message de bienvenue sur le serveur (via l'ID fourni)
+    # 2. Message de bienvenue sur le serveur (via l'ID exact du salon)
     salon_bienvenue = member.guild.get_channel(SALON_BIENVENUE_ID)
     if salon_bienvenue:
         embed = discord.Embed(
@@ -258,7 +267,7 @@ async def on_member_remove(member):
     uid = str(member.id)
     SALON_BIENVENUE_ID = 1521181917095923857
     
-    # Message de départ sur le serveur (via l'ID fourni)
+    # Message de départ sur le serveur (via l'ID exact du salon)
     salon_depart = member.guild.get_channel(SALON_BIENVENUE_ID) 
     if salon_depart:
         embed = discord.Embed(
@@ -468,83 +477,4 @@ async def mute_cmd(interaction: discord.Interaction, membre: discord.Member, dur
     duree_str = f"{duree} minute(s)" if duree > 0 else "Permanent"
     embed = discord.Embed(title="🔇 Membre muet", color=0xFF0000)
     embed.add_field(name="Membre", value=membre.mention, inline=True)
-    embed.add_field(name="Durée", value=duree_str, inline=True)
-    embed.add_field(name="Raison", value=raison, inline=True)
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="unmute", description="Retirer le mute d'un membre")
-@app_commands.describe(membre="Le membre")
-@app_commands.checks.has_permissions(manage_roles=True)
-async def unmute_cmd(interaction: discord.Interaction, membre: discord.Member):
-    mute_role = discord.utils.get(interaction.guild.roles, name="Muted")
-    if mute_role and mute_role in membre.roles:
-        await membre.remove_roles(mute_role)
-    gid = str(interaction.guild.id)
-    uid = str(membre.id)
-    if gid in mutes_data and uid in mutes_data[gid]:
-        del mutes_data[gid][uid]
-        save("mutes", mutes_data)
-    await interaction.response.send_message(f"✅ {membre.mention} n'est plus muet.", ephemeral=True)
-
-@bot.tree.command(name="kick", description="Expulser un membre")
-@app_commands.describe(membre="Le membre", raison="La raison")
-@app_commands.checks.has_permissions(kick_members=True)
-async def kick_cmd(interaction: discord.Interaction, membre: discord.Member, raison: str = "Aucune raison"):
-    await membre.kick(reason=raison)
-    embed = discord.Embed(title="👢 Membre expulsé", color=0xFF6600)
-    embed.add_field(name="Membre", value=str(membre), inline=True)
-    embed.add_field(name="Raison", value=raison, inline=True)
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="ban", description="Bannir un membre")
-@app_commands.describe(membre="Le membre", raison="La raison")
-@app_commands.checks.has_permissions(ban_members=True)
-async def ban_cmd(interaction: discord.Interaction, membre: discord.Member, raison: str = "Aucune raison"):
-    await membre.ban(reason=raison)
-    embed = discord.Embed(title="🔨 Membre banni", color=0xFF0000)
-    embed.add_field(name="Membre", value=str(membre), inline=True)
-    embed.add_field(name="Raison", value=raison, inline=True)
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="unban", description="Débannir un membre")
-@app_commands.describe(user_id="L'ID du membre banni")
-@app_commands.checks.has_permissions(ban_members=True)
-async def unban_cmd(interaction: discord.Interaction, user_id: str):
-    try:
-        user = await bot.fetch_user(int(user_id))
-        await interaction.guild.unban(user)
-        await interaction.response.send_message(f"✅ {user} a été débanni.", ephemeral=True)
-    except:
-        await interaction.response.send_message("❌ Utilisateur introuvable ou pas banni.", ephemeral=True)
-
-# ── Stats du serveur ──────────────────────────────────────────────────────────
-@bot.tree.command(name="stats", description="Statistiques du serveur")
-async def stats_cmd(interaction: discord.Interaction):
-    guild = interaction.guild
-    total = guild.member_count
-    bots = sum(1 for m in guild.members if m.bot)
-    humains = total - bots
-    en_ligne = sum(1 for m in guild.members if m.status != discord.Status.offline and not m.bot)
-    salons_texte = len(guild.text_channels)
-    salons_vocal = len(guild.voice_channels)
-    roles = len(guild.roles)
-    boosts = guild.premium_subscription_count
-
-    embed = discord.Embed(title=f"📊 Stats de {guild.name}", color=0x7289DA)
-    embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
-    embed.add_field(name="👥 Membres", value=str(humains), inline=True)
-    embed.add_field(name="🤖 Bots", value=str(bots), inline=True)
-    embed.add_field(name="🟢 En ligne", value=str(en_ligne), inline=True)
-    embed.add_field(name="💬 Salons texte", value=str(salons_texte), inline=True)
-    embed.add_field(name="🔊 Salons vocal", value=str(salons_vocal), inline=True)
-    embed.add_field(name="🎭 Rôles", value=str(roles), inline=True)
-    embed.add_field(name="🚀 Boosts", value=str(boosts), inline=True)
-    embed.add_field(name="📅 Créé le", value=guild.created_at.strftime("%d/%m/%Y"), inline=True)
-    embed.add_field(name="👑 Propriétaire", value=f"<@{guild.owner_id}>", inline=True)
-    await interaction.response.send_message(embed=embed)
-
-# ── Lancement ────────────────────────────────────────────────────────────────
-if TOKEN:
-    bot.run(TOKEN)
-else:
-    print("❌ Erreur : DISCORD_TOKEN_GESTION introuvable.")
+    embed.add_field(name="
