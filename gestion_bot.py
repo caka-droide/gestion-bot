@@ -56,7 +56,7 @@ invites_data = load("invites")
 
 # ── XP / Niveaux ─────────────────────────────────────────────────────────────
 XP_PAR_MESSAGE = 15
-COOLDOWN_XP = {}  # user_id: timestamp dernier message
+COOLDOWN_XP = {}
 
 def xp_pour_niveau(niveau):
     return 100 * (niveau ** 2)
@@ -67,7 +67,6 @@ def get_niveau(xp):
         niveau += 1
     return niveau
 
-# Rôles automatiques par niveau (à personnaliser)
 ROLES_NIVEAUX = {
     5:  "Niveau 5",
     10: "Niveau 10",
@@ -84,7 +83,6 @@ async def on_message(message):
     gid = str(message.guild.id)
     now = datetime.now().timestamp()
 
-    # Cooldown 60 secondes entre chaque gain d'XP
     key = f"{gid}_{uid}"
     if key in COOLDOWN_XP and now - COOLDOWN_XP[key] < 60:
         await bot.process_commands(message)
@@ -104,7 +102,6 @@ async def on_message(message):
     levels_data[gid][uid]["niveau"] = nouveau_niveau
     save("levels", levels_data)
 
-    # Level up !
     if nouveau_niveau > ancien_niveau:
         embed = discord.Embed(
             title="⭐ Level Up !",
@@ -113,7 +110,6 @@ async def on_message(message):
         )
         await message.channel.send(embed=embed)
 
-        # Attribuer un rôle si défini
         if nouveau_niveau in ROLES_NIVEAUX:
             role = discord.utils.get(message.guild.roles, name=ROLES_NIVEAUX[nouveau_niveau])
             if role:
@@ -121,7 +117,23 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ── Système de Tickets ───────────────────────────────────────────────────────
+# ── Bouton de Fermeture des Tickets ──────────────────────────────────────────
+class CloseButton(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Fermer le ticket", style=discord.ButtonStyle.danger, custom_id="fermer_ticket_btn", emoji="🔒")
+    async def bouton_fermer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("🔒 **Le ticket va se fermer et être supprimé dans 5 secondes...**")
+        await asyncio.sleep(5)
+        try:
+            await interaction.channel.delete()
+        except discord.Forbidden:
+            await interaction.followup.send("❌ Je n'ai pas la permission de supprimer ce salon.", ephemeral=True)
+        except Exception as e:
+            print(f"Erreur fermeture ticket : {e}")
+
+# ── Système de Tickets (Ouverture) ───────────────────────────────────────────
 class TicketButton(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -131,7 +143,6 @@ class TicketButton(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
         
-        # ID de la catégorie
         CATEGORY_ID = 1521181911773348010
         category = guild.get_channel(CATEGORY_ID)
 
@@ -154,10 +165,11 @@ class TicketButton(discord.ui.View):
             
             embed = discord.Embed(
                 title="🎫 Nouveau Ticket",
-                description=f"Bonjour {interaction.user.mention},\nExplique ton problème ici. L'équipe du staff te répondra dès que possible.",
+                description=f"Bonjour {interaction.user.mention},\nExplique ton problème ici. L'équipe du staff te répondra dès que possible.\n\n*Pour fermer ce ticket, clique sur le bouton rouge ci-dessous.*",
                 color=0x2b2d31
             )
-            await ticket_channel.send(embed=embed)
+            # On envoie l'embed ET le bouton de fermeture dans le nouveau salon
+            await ticket_channel.send(embed=embed, view=CloseButton())
 
         except discord.Forbidden:
             await interaction.followup.send("❌ Je n'ai pas la permission de **Gérer les salons** ou de **Gérer les rôles**.", ephemeral=True)
@@ -169,6 +181,7 @@ class TicketButton(discord.ui.View):
 async def on_ready():
     print(f"✅ Bot connecté : {bot.user}")
     bot.add_view(TicketButton())
+    bot.add_view(CloseButton()) # On enregistre aussi le bouton de fermeture pour qu'il marche après redémarrage
     
     try:
         synced = await bot.tree.sync()
