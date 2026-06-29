@@ -121,17 +121,54 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ── Suivi des invitations ─────────────────────────────────────────────────────
+# ── Système de Tickets ───────────────────────────────────────────────────────
+class TicketButton(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Ouvrir un ticket", style=discord.ButtonStyle.primary, custom_id="creer_ticket_btn", emoji="🎫")
+    async def bouton_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        
+        # ID de la catégorie pour les tickets
+        CATEGORY_ID = 1521181952697172161
+        category = guild.get_channel(CATEGORY_ID)
+
+        nom_salon = f"ticket-{interaction.user.name.lower()}"
+        salon_existant = discord.utils.get(guild.text_channels, name=nom_salon)
+        
+        if salon_existant:
+            await interaction.response.send_message(f"❌ Tu as déjà un ticket ouvert : {salon_existant.mention}", ephemeral=True)
+            return
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+        
+        ticket_channel = await guild.create_text_channel(name=nom_salon, category=category, overwrites=overwrites)
+        await interaction.response.send_message(f"✅ Ton ticket a été créé : {ticket_channel.mention}", ephemeral=True)
+        
+        embed = discord.Embed(
+            title="🎫 Nouveau Ticket",
+            description=f"Bonjour {interaction.user.mention},\nExplique ton problème ici. L'équipe du staff te répondra dès que possible.",
+            color=0x2b2d31
+        )
+        await ticket_channel.send(embed=embed)
+
+# ── Initialisation ────────────────────────────────────────────────────────────
 @bot.event
 async def on_ready():
     print(f"✅ Bot connecté : {bot.user}")
+    bot.add_view(TicketButton())
+    
     try:
         synced = await bot.tree.sync()
         print(f"✅ {len(synced)} commandes synchronisées")
     except Exception as e:
         print(f"❌ Erreur sync : {e}")
 
-    # Sauvegarder les invitations actuelles
     for guild in bot.guilds:
         gid = str(guild.id)
         try:
@@ -150,6 +187,7 @@ async def on_ready():
             pass
     check_mutes.start()
 
+# ── Système de Bienvenue, Départs et Invitations ──────────────────────────────
 @bot.event
 async def on_invite_create(invite):
     gid = str(invite.guild.id)
@@ -166,6 +204,30 @@ async def on_invite_create(invite):
 @bot.event
 async def on_member_join(member):
     gid = str(member.guild.id)
+    SALON_BIENVENUE_ID = 1521181917095923857
+    
+    # 1. Message privé (DM)
+    try:
+        await member.send(
+            f"Salut {member.mention} ! Bienvenue sur **{member.guild.name}** ! 🎉\n"
+            f"N'hésite pas à aller lire le règlement et à passer un bon moment avec nous !"
+        )
+    except discord.Forbidden:
+        print(f"Impossible d'envoyer un DM de bienvenue à {member.display_name} (DMs fermés).")
+
+    # 2. Message de bienvenue sur le serveur (via l'ID fourni)
+    salon_bienvenue = member.guild.get_channel(SALON_BIENVENUE_ID)
+    if salon_bienvenue:
+        embed = discord.Embed(
+            title="👋 Un nouveau membre vient d'arriver !",
+            description=f"Bienvenue {member.mention} sur **{member.guild.name}** !\nNous sommes maintenant {member.guild.member_count} membres.",
+            color=0x00FF00
+        )
+        embed.set_image(url="https://i.imgur.com/vHq4R7K.gif") 
+        embed.set_thumbnail(url=member.display_avatar.url)
+        await salon_bienvenue.send(embed=embed)
+
+    # Gestion des invitations
     try:
         new_invites = await member.guild.fetch_invites()
         old_invites = invites_data.get(gid, {})
@@ -174,7 +236,6 @@ async def on_member_join(member):
             old = old_invites.get(inv.code, {})
             old_uses = old.get("uses", 0)
             if inv.uses > old_uses:
-                # C'est cette invitation qui a été utilisée
                 if gid not in invites_data:
                     invites_data[gid] = {}
                 if inv.code not in invites_data[gid]:
@@ -188,7 +249,6 @@ async def on_member_join(member):
                 invites_data[gid][inv.code]["joined"].append(str(member.id))
                 save("invites", invites_data)
                 break
-
     except:
         pass
 
@@ -196,6 +256,20 @@ async def on_member_join(member):
 async def on_member_remove(member):
     gid = str(member.guild.id)
     uid = str(member.id)
+    SALON_BIENVENUE_ID = 1521181917095923857
+    
+    # Message de départ sur le serveur (via l'ID fourni)
+    salon_depart = member.guild.get_channel(SALON_BIENVENUE_ID) 
+    if salon_depart:
+        embed = discord.Embed(
+            title="😢 Départ d'un membre",
+            description=f"**{member.display_name}** a quitté le serveur. À bientôt...",
+            color=0xFF0000
+        )
+        embed.set_image(url="https://i.imgur.com/A6bJ1tA.gif")
+        await salon_depart.send(embed=embed)
+
+    # Gestion des invitations
     if gid in invites_data:
         for code, data in invites_data[gid].items():
             if uid in data.get("joined", []):
@@ -225,6 +299,33 @@ async def check_mutes():
     if to_unmute:
         save("mutes", mutes_data)
 
+# ── Commandes Nouvelles (Tickets, Clear) ──────────────────────────────────────
+@bot.tree.command(name="setup_ticket", description="Configure le panel pour créer des tickets")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_ticket_cmd(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="📞 Support et Tickets",
+        description="Clique sur le bouton ci-dessous pour ouvrir un ticket et contacter l'équipe du serveur.",
+        color=0x2b2d31
+    )
+    await interaction.channel.send(embed=embed, view=TicketButton())
+    await interaction.response.send_message("✅ Panel de tickets créé avec succès.", ephemeral=True)
+
+@bot.tree.command(name="clear", description="Supprimer massivement des messages dans un salon")
+@app_commands.describe(montant="Nombre de messages à supprimer", salon="Le salon à nettoyer (par défaut : salon actuel)")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def clear_cmd(interaction: discord.Interaction, montant: int = 1000, salon: discord.TextChannel = None):
+    cible = salon or interaction.channel
+    await interaction.response.defer(ephemeral=True)
+    
+    try:
+        deleted = await cible.purge(limit=montant)
+        await interaction.followup.send(f"✅ `{len(deleted)}` messages ont été supprimés dans {cible.mention}.")
+    except discord.Forbidden:
+        await interaction.followup.send("❌ Je n'ai pas la permission de gérer les messages dans ce salon.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Une erreur s'est produite : {e}")
+
 # ── Commandes Niveaux ─────────────────────────────────────────────────────────
 @bot.tree.command(name="niveau", description="Voir ton niveau ou celui d'un membre")
 @app_commands.describe(membre="Le membre à inspecter (optionnel)")
@@ -239,12 +340,7 @@ async def niveau_cmd(interaction: discord.Interaction, membre: discord.Member = 
     xp_actuel = xp - sum(xp_pour_niveau(i) for i in range(1, niveau + 1)) if niveau > 0 else xp
     xp_prochain = xp_pour_niveau(niveau + 1)
 
-    # Classement
-    classement = sorted(
-        levels_data.get(gid, {}).items(),
-        key=lambda x: x[1].get("xp", 0),
-        reverse=True
-    )
+    classement = sorted(levels_data.get(gid, {}).items(), key=lambda x: x[1].get("xp", 0), reverse=True)
     rank = next((i+1 for i, (u, _) in enumerate(classement) if u == uid), "?")
 
     embed = discord.Embed(title=f"⭐ Niveau de {cible.display_name}", color=0xFFD700)
