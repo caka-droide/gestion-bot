@@ -47,6 +47,42 @@ async def envoyer_log(guild, titre, description, couleur=0x7289DA, auteur=None):
             embed.set_footer(text=f"Action par : {auteur.name}", icon_url=auteur.display_avatar.url)
         await salon_logs.send(embed=embed)
 
+# Fonction utilitaire pour générer et envoyer le transcript d'un ticket
+async def envoyer_transcript(guild, salon_ticket, ferme_par):
+    salon_logs_tickets = guild.get_channel(SALON_LOGS_TICKETS_ID)
+    if not salon_logs_tickets:
+        return
+
+    messages = [msg async for msg in salon_ticket.history(limit=None, oldest_first=True)]
+
+    lignes = [f"=== Transcript du ticket {salon_ticket.name} ==="]
+    lignes.append(f"Fermé par : {ferme_par} le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
+    lignes.append("")
+
+    for msg in messages:
+        horodatage = msg.created_at.strftime("%d/%m/%Y %H:%M")
+        contenu = msg.content if msg.content else "[Embed / Pièce jointe]"
+        lignes.append(f"[{horodatage}] {msg.author} : {contenu}")
+
+    texte_transcript = "\n".join(lignes)
+
+    nom_fichier = f"transcript-{salon_ticket.name}.txt"
+    with open(nom_fichier, "w", encoding="utf-8") as f:
+        f.write(texte_transcript)
+
+    embed = discord.Embed(
+        title="📄 Transcript du Ticket",
+        description=f"Ticket : `{salon_ticket.name}`\nFermé par : {ferme_par}\nNombre de messages : {len(messages)}",
+        color=0x2b2d31,
+        timestamp=datetime.now()
+    )
+
+    try:
+        await salon_logs_tickets.send(embed=embed, file=discord.File(nom_fichier))
+    finally:
+        if os.path.exists(nom_fichier):
+            os.remove(nom_fichier)
+
 # ── Fichiers de données ───────────────────────────────────────────────────────
 FILES = {
     "levels": "levels.json",
@@ -143,7 +179,10 @@ class CloseButton(discord.ui.View):
         await interaction.response.send_message("🔒 **Le ticket va se fermer et être supprimé dans 5 secondes...**")
         
         # Génère le transcript avant de fermer
-        await envoyer_transcript(interaction, interaction.guild, interaction.channel, interaction.user)
+        try:
+            await envoyer_transcript(interaction.guild, interaction.channel, interaction.user)
+        except Exception as e:
+            print(f"Erreur génération transcript : {e}")
         
         await envoyer_log(interaction.guild, "🔒 Ticket Fermé", f"Le salon `{interaction.channel.name}` a été supprimé.", 0xFF0000, interaction.user)
         await asyncio.sleep(5)
@@ -193,40 +232,6 @@ class TicketButton(discord.ui.View):
             # Log de l'ouverture
             await envoyer_log(guild, "🎫 Ticket Ouvert", f"Ticket créé par {interaction.user.mention} ({ticket_channel.mention})", 0x00FF00, interaction.user)
 
-        async def envoyer_transcript(interaction_or_channel, guild, salon_ticket, ferme_par):
-    salon_logs_tickets = guild.get_channel(SALON_LOGS_TICKETS_ID)
-    if not salon_logs_tickets:
-        return
-
-    messages = [msg async for msg in salon_ticket.history(limit=None, oldest_first=True)]
-
-    lignes = [f"=== Transcript du ticket {salon_ticket.name} ==="]
-    lignes.append(f"Fermé par : {ferme_par} le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
-    lignes.append("")
-
-    for msg in messages:
-        horodatage = msg.created_at.strftime("%d/%m/%Y %H:%M")
-        contenu = msg.content if msg.content else "[Embed / Pièce jointe]"
-        lignes.append(f"[{horodatage}] {msg.author} : {contenu}")
-
-    texte_transcript = "\n".join(lignes)
-
-    nom_fichier = f"transcript-{salon_ticket.name}.txt"
-    with open(nom_fichier, "w", encoding="utf-8") as f:
-        f.write(texte_transcript)
-
-    embed = discord.Embed(
-        title="📄 Transcript du Ticket",
-        description=f"Ticket : `{salon_ticket.name}`\nFermé par : {ferme_par}\nNombre de messages : {len(messages)}",
-        color=0x2b2d31,
-        timestamp=datetime.now()
-    )
-
-    await salon_logs_tickets.send(embed=embed, file=discord.File(nom_fichier))
-
-    os.remove(nom_fichier)
-
-        
         except discord.Forbidden:
             await interaction.followup.send("❌ Je n'ai pas la permission de **Gérer les salons** ou de **Gérer les rôles**.", ephemeral=True)
         except Exception as e:
@@ -393,7 +398,7 @@ async def log_cmd(interaction: discord.Interaction):
 @app_commands.checks.has_permissions(administrator=True)
 async def setup_ticket_cmd(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="📞 Support et Tickets",
+    title="📞 Support et Tickets",
         description="Clique sur le bouton ci-dessous pour ouvrir un ticket et contacter l'équipe du serveur.",
         color=0x2b2d31
     )
@@ -467,7 +472,7 @@ async def invitations_cmd(interaction: discord.Interaction, membre: discord.Memb
 
     total_joins = 0
     total_left = 0
-    codes_utilisés = []
+    codes_utilises = []
 
     for code, data in invites_data.get(gid, {}).items():
         if data.get("inviter_id") == uid:
@@ -476,16 +481,16 @@ async def invitations_cmd(interaction: discord.Interaction, membre: discord.Memb
             total_joins += joins
             total_left += left
             if joins > 0:
-                codes_utilisés.append(f"`{code}` : {joins} invités ({left} partis)")
+                codes_utilises.append(f"`{code}` : {joins} invités ({left} partis)")
 
-    restés = total_joins - total_left
+    restes = total_joins - total_left
 
     embed = discord.Embed(title=f"📨 Invitations de {cible.display_name}", color=0x7289DA)
     embed.add_field(name="Total invités", value=str(total_joins), inline=True)
-    embed.add_field(name="Restés", value=str(restés), inline=True)
+    embed.add_field(name="Restés", value=str(restes), inline=True)
     embed.add_field(name="Partis", value=str(total_left), inline=True)
-    if codes_utilisés:
-        embed.add_field(name="Détail par lien", value="\n".join(codes_utilisés[:5]), inline=False)
+    if codes_utilises:
+        embed.add_field(name="Détail par lien", value="\n".join(codes_utilises[:5]), inline=False)
     embed.set_thumbnail(url=cible.display_avatar.url)
     await interaction.response.send_message(embed=embed)
 
