@@ -32,7 +32,8 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Configuration des salons importants
-SALON_BIENVENUE_ID = 1521181917095923857
+SALON_BIENVENUE_ID = 1479435186973446286
+SALON_DEPART_ID = 1479435186973446287
 SALON_LOGS_ID = 1479435189129318524
 CATEGORY_TICKETS_ID = 1479435189611397183
 
@@ -289,7 +290,7 @@ async def on_member_remove(member):
     gid = str(member.guild.id)
     uid = str(member.id)
     
-    salon_depart = member.guild.get_channel(SALON_BIENVENUE_ID) 
+    salon_depart = member.guild.get_channel(SALON_DEPART_ID)  # ← changé ici
     if salon_depart:
         embed = discord.Embed(
             title="😢 Départ d'un membre",
@@ -305,7 +306,6 @@ async def on_member_remove(member):
                 data["left"].append(uid)
                 save("invites", invites_data)
                 break
-
 # ── Tâche mutes temporaires ──────────────────────────────────────────────────
 @tasks.loop(seconds=30)
 async def check_mutes():
