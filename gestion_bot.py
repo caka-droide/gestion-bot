@@ -297,7 +297,7 @@ async def on_member_remove(member):
             description=f"**{member.display_name}** a quitté le serveur. À bientôt...",
             color=0xFF0000
         )
-        embed.set_image(url="https://i.imgur.com/A6bJ1tA.gif")
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1520903056202530940/1522952890904215683/image0.gif?ex=6a4a57e8&is=6a490668&hm=4e242b93c14d591d3b2d9814fa23ad4a40166e5be625360c9debecfb30a0a993&")
         await salon_depart.send(embed=embed)
 
     if gid in invites_data:
