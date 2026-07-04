@@ -35,6 +35,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 SALON_BIENVENUE_ID = 1479435186973446286
 SALON_DEPART_ID = 1479435186973446287
 SALON_LOGS_ID = 1479435189129318524
+SALON_LOGS_TICKETS_ID = 1479435189129318527
 CATEGORY_TICKETS_ID = 1479435189611397183
 
 # Fonction utilitaire pour envoyer un log automatique dans le salon dédié
@@ -140,6 +141,10 @@ class CloseButton(discord.ui.View):
     @discord.ui.button(label="Fermer le ticket", style=discord.ButtonStyle.danger, custom_id="fermer_ticket_btn", emoji="🔒")
     async def bouton_fermer(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("🔒 **Le ticket va se fermer et être supprimé dans 5 secondes...**")
+        
+        # Génère le transcript avant de fermer
+        await envoyer_transcript(interaction, interaction.guild, interaction.channel, interaction.user)
+        
         await envoyer_log(interaction.guild, "🔒 Ticket Fermé", f"Le salon `{interaction.channel.name}` a été supprimé.", 0xFF0000, interaction.user)
         await asyncio.sleep(5)
         try:
@@ -188,6 +193,40 @@ class TicketButton(discord.ui.View):
             # Log de l'ouverture
             await envoyer_log(guild, "🎫 Ticket Ouvert", f"Ticket créé par {interaction.user.mention} ({ticket_channel.mention})", 0x00FF00, interaction.user)
 
+        async def envoyer_transcript(interaction_or_channel, guild, salon_ticket, ferme_par):
+    salon_logs_tickets = guild.get_channel(SALON_LOGS_TICKETS_ID)
+    if not salon_logs_tickets:
+        return
+
+    messages = [msg async for msg in salon_ticket.history(limit=None, oldest_first=True)]
+
+    lignes = [f"=== Transcript du ticket {salon_ticket.name} ==="]
+    lignes.append(f"Fermé par : {ferme_par} le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
+    lignes.append("")
+
+    for msg in messages:
+        horodatage = msg.created_at.strftime("%d/%m/%Y %H:%M")
+        contenu = msg.content if msg.content else "[Embed / Pièce jointe]"
+        lignes.append(f"[{horodatage}] {msg.author} : {contenu}")
+
+    texte_transcript = "\n".join(lignes)
+
+    nom_fichier = f"transcript-{salon_ticket.name}.txt"
+    with open(nom_fichier, "w", encoding="utf-8") as f:
+        f.write(texte_transcript)
+
+    embed = discord.Embed(
+        title="📄 Transcript du Ticket",
+        description=f"Ticket : `{salon_ticket.name}`\nFermé par : {ferme_par}\nNombre de messages : {len(messages)}",
+        color=0x2b2d31,
+        timestamp=datetime.now()
+    )
+
+    await salon_logs_tickets.send(embed=embed, file=discord.File(nom_fichier))
+
+    os.remove(nom_fichier)
+
+        
         except discord.Forbidden:
             await interaction.followup.send("❌ Je n'ai pas la permission de **Gérer les salons** ou de **Gérer les rôles**.", ephemeral=True)
         except Exception as e:
