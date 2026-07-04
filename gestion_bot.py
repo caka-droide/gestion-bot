@@ -33,8 +33,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Configuration des salons importants
 SALON_BIENVENUE_ID = 1521181917095923857
-SALON_LOGS_ID = 1521181898725134419
-CATEGORY_TICKETS_ID = 1521181911773348010
+SALON_LOGS_ID = 1479435189129318524
+CATEGORY_TICKETS_ID = 1479435189611397183
 
 # Fonction utilitaire pour envoyer un log automatique dans le salon dédié
 async def envoyer_log(guild, titre, description, couleur=0x7289DA, auteur=None):
