@@ -11,11 +11,9 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ── Configuration des ID à remplir ───────────────────────────────────────────
-# Remplacer par les vrais IDs de ton serveur
-ROLE_STAFF_ID = 1521181880207147189  # Remplace par l'ID du rôle Staff
-ROLE_ADMIN_STAFF_ID = 1521181879141797952  # Remplace par l'ID du rôle Admin Staff
+ROLE_STAFF_ID = 1521181880207147189  
+ROLE_ADMIN_STAFF_ID = 1521181879141797952  
 
-# Configuration des salons importants
 SALON_BIENVENUE_ID = 1521181917095923857
 SALON_DEPART_ID = 1521181917095923857
 SALON_LOGS_ID = 1521181898725134419
@@ -42,12 +40,10 @@ threading.Thread(target=run_web_server, daemon=True).start()
 TOKEN = os.environ.get("DISCORD_TOKEN_GESTION")
 
 intents = discord.Intents.all()
-# Le bot écoute désormais "!" et "+"
 bot = commands.Bot(command_prefix=["!", "+"], intents=intents, help_command=None)
 
 # ── Checks personnalisés ─────────────────────────────────────────────────────
 def is_staff_or_higher():
-    """Check si l'utilisateur est Staff, Admin Staff, ou Propriétaire"""
     async def predicate(ctx):
         if ctx.author.id == ctx.guild.owner_id:
             return True
@@ -56,7 +52,6 @@ def is_staff_or_higher():
     return commands.check(predicate)
 
 def is_admin_staff_or_higher():
-    """Check si l'utilisateur est Admin Staff, ou Propriétaire"""
     async def predicate(ctx):
         if ctx.author.id == ctx.guild.owner_id:
             return True
@@ -65,12 +60,10 @@ def is_admin_staff_or_higher():
     return commands.check(predicate)
 
 def is_server_owner():
-    """Check pour les Slash Commands réservées au propriétaire du serveur"""
     def predicate(interaction: discord.Interaction):
         return interaction.user.id == interaction.guild.owner_id
     return app_commands.check(predicate)
 
-# Fonction utilitaire pour envoyer un log automatique dans le salon dédié
 async def envoyer_log(guild, titre, description, couleur=0x7289DA, auteur=None):
     salon_logs = guild.get_channel(SALON_LOGS_ID)
     if salon_logs:
@@ -79,7 +72,6 @@ async def envoyer_log(guild, titre, description, couleur=0x7289DA, auteur=None):
             embed.set_footer(text=f"Action par : {auteur.name}", icon_url=auteur.display_avatar.url)
         await salon_logs.send(embed=embed)
 
-# Fonction utilitaire pour générer et envoyer le transcript d'un ticket
 async def envoyer_transcript(guild, salon_ticket, ferme_par):
     salon_logs_tickets = guild.get_channel(SALON_LOGS_TICKETS_ID)
     if not salon_logs_tickets:
@@ -312,7 +304,6 @@ class TicketButton(discord.ui.View):
                 color=0x2b2d31
             )
             
-            # Ping des rôles Staff et Admin Staff
             message_ping = f"<@&{ROLE_STAFF_ID}> <@&{ROLE_ADMIN_STAFF_ID}>"
             await ticket_channel.send(content=message_ping, embed=embed, view=CloseButton())
             
@@ -427,7 +418,6 @@ async def on_ready():
         except:
             pass
 
-    if not check_mutes.is_running(): check_mutes.start()
     if not check_giveaways.is_running(): check_giveaways.start()
 
 # ── Bienvenue & Invites ──────────────────────────────────────────────────────
@@ -483,28 +473,6 @@ async def on_member_remove(member):
                 data["left"].append(uid)
                 await save("invites", invites_data)
                 break
-
-# ── Mutes Temporaires ────────────────────────────────────────────────────────
-@tasks.loop(seconds=30)
-async def check_mutes():
-    now = datetime.now().timestamp()
-    to_unmute = []
-    for gid, users in mutes_data.items():
-        for uid, data in users.items():
-            if data.get("end_time") and now >= data["end_time"]:
-                to_unmute.append((gid, uid))
-
-    for gid, uid in to_unmute:
-        guild = bot.get_guild(int(gid))
-        if guild:
-            member = guild.get_member(int(uid))
-            if member:
-                mute_role = discord.utils.get(guild.roles, name="Muted")
-                if mute_role and mute_role in member.roles:
-                    await member.remove_roles(mute_role)
-        del mutes_data[gid][uid]
-    if to_unmute:
-        await save("mutes", mutes_data)
 
 # ── Giveaways ────────────────────────────────────────────────────────────────
 GIVEAWAY_EMOJI = "🎉"
@@ -609,7 +577,7 @@ async def help(ctx):
     embed.add_field(name="🛡️ Staff", value=(
         "`+warn <@membre> <raison>` : Avertir un membre.\n"
         "`+unwarn <@membre>` : Retirer les avertissements.\n"
-        "`+mute <@membre> <durée> <raison>` : Mute temporaire.\n"
+        "`+mute <@membre> <durée> <raison>` : Mute un membre avec l'exclusion native Discord (ex: `+mute @membre 3m raison`).\n"
         "`+unmute <@membre>` : Retirer le mute.\n"
         "`+lock` / `+unlock` : Verrouiller ou déverrouiller le salon actuel."
     ), inline=False)
@@ -668,23 +636,28 @@ async def unwarn(ctx, membre: discord.Member):
 
 @bot.command()
 @is_staff_or_higher()
-async def mute(ctx, membre: discord.Member, duree: int = 0, *, raison: str = "Aucune raison"):
-    mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
-    if not mute_role:
-        mute_role = await ctx.guild.create_role(name="Muted")
-        for channel in ctx.guild.channels:
-            await channel.set_permissions(mute_role, send_messages=False, speak=False)
+async def mute(ctx, membre: discord.Member, duree_str: str, *, raison: str = "Aucune raison"):
+    secondes = parse_duree(duree_str)
+    if not secondes:
+        await ctx.send("❌ **Format de durée invalide.** Exemple : `3m` (3 minutes), `1h` (1 heure), `1d` (1 jour).")
+        return
 
-    await membre.add_roles(mute_role)
-    gid = str(ctx.guild.id)
-    uid = str(membre.id)
-    if gid not in mutes_data: mutes_data[gid] = {}
-    end_time = (datetime.now() + timedelta(minutes=duree)).timestamp() if duree > 0 else None
-    mutes_data[gid][uid] = {"end_time": end_time, "raison": raison}
-    await save("mutes", mutes_data)
+    # Discord limite le timeout natif à 28 jours maximum
+    if secondes > 2419200:
+        await ctx.send("❌ La durée maximale de mute (exclusion native) est de 28 jours (`28d`).")
+        return
 
-    duree_str = f"{duree} minute(s)" if duree > 0 else "Permanent"
-    embed = discord.Embed(title="🔇 Membre muet", color=0xFF0000)
+    duree_td = timedelta(seconds=secondes)
+    try:
+        await membre.timeout(duree_td, reason=raison)
+    except discord.Forbidden:
+        await ctx.send("❌ Je n'ai pas la permission d'exclure temporairement ce membre (vérifie mes rôles et la hiérarchie).")
+        return
+    except Exception as e:
+        await ctx.send(f"❌ Une erreur est survenue lors du timeout : {e}")
+        return
+
+    embed = discord.Embed(title="🔇 Membre rendu muet (Timeout)", color=0xFF0000)
     embed.add_field(name="Membre", value=membre.mention, inline=True)
     embed.add_field(name="Durée", value=duree_str, inline=True)
     embed.add_field(name="Raison", value=raison, inline=True)
@@ -694,16 +667,17 @@ async def mute(ctx, membre: discord.Member, duree: int = 0, *, raison: str = "Au
 @bot.command()
 @is_staff_or_higher()
 async def unmute(ctx, membre: discord.Member):
-    mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
-    if mute_role and mute_role in membre.roles:
-        await membre.remove_roles(mute_role)
-    gid = str(ctx.guild.id)
-    uid = str(membre.id)
-    if gid in mutes_data and uid in mutes_data[gid]:
-        del mutes_data[gid][uid]
-        await save("mutes", mutes_data)
+    try:
+        await membre.timeout(None, reason=f"Unmute par {ctx.author.name}")
+    except discord.Forbidden:
+        await ctx.send("❌ Je n'ai pas la permission de retirer l'exclusion de ce membre.")
+        return
+    except Exception as e:
+        await ctx.send(f"❌ Une erreur est survenue : {e}")
+        return
+
     await ctx.send(f"✅ {membre.mention} n'est plus muet.")
-    await envoyer_log(ctx.guild, "🔊 Membre Unmute", f"Le rôle Muted a été retiré à {membre.mention}.", 0x2ECC71, ctx.author)
+    await envoyer_log(ctx.guild, "🔊 Membre Unmute", f"L'exclusion de {membre.mention} a été retirée.", 0x2ECC71, ctx.author)
 
 @bot.command()
 @is_staff_or_higher()
@@ -747,11 +721,11 @@ async def unlock(ctx):
 @is_admin_staff_or_higher()
 async def kick(ctx, membre: discord.Member, *, raison: str = "Aucune raison"):
     await membre.kick(reason=raison)
-    embed = discord.Embed(title="👢 Membre expulsé", color=0xFF6600)
+    embed = discord.Embed(title=" Membre expulsé", color=0xFF6600)
     embed.add_field(name="Membre", value=str(membre), inline=True)
     embed.add_field(name="Raison", value=raison, inline=True)
     await ctx.send(embed=embed)
-    await envoyer_log(ctx.guild, "👢 Membre Kické", f"Pseudo : **{membre}**\nRaison : {raison}", 0xE67E22, ctx.author)
+    await envoyer_log(ctx.guild, " Membre Kické", f"Pseudo : **{membre}**\nRaison : {raison}", 0xE67E22, ctx.author)
 
 @bot.command()
 @is_admin_staff_or_higher()
@@ -895,7 +869,6 @@ async def classement_cmd(interaction: discord.Interaction):
 
 @bot.tree.command(name="invitations", description="Voir tes invitations")
 async def invitations_cmd(interaction: discord.Interaction):
-    # La logique complète a été déplacée dans la commande +i, ici on redirige l'utilisateur
     await interaction.response.send_message("👉 Utilise la commande `+i` dans le chat pour voir tes invitations !", ephemeral=True)
 
 @bot.tree.command(name="unban", description="Débannir un membre")
@@ -978,3 +951,4 @@ if TOKEN:
     bot.run(TOKEN)
 else:
     print("❌ Erreur : DISCORD_TOKEN_GESTION introuvable.")
+    
