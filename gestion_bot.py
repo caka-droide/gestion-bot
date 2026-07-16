@@ -872,14 +872,18 @@ async def invitations_cmd(interaction: discord.Interaction):
     await interaction.response.send_message("👉 Utilise la commande `+i` dans le chat pour voir tes invitations !", ephemeral=True)
 
 @bot.tree.command(name="unban", description="Débannir un membre")
-@app_commands.checks.has_permissions(ban_members=True)
+@is_admin_staff_or_higher()
 async def unban_cmd(interaction: discord.Interaction, user_id: str):
     try:
         user = await bot.fetch_user(int(user_id))
         await interaction.guild.unban(user)
         await interaction.response.send_message(f"✅ {user} débanni.", ephemeral=True)
-    except:
-        await interaction.response.send_message("❌ Utilisateur introuvable.", ephemeral=True)
+        
+        # Envoi dans les logs
+        await envoyer_log(interaction.guild, "🔓 Membre Débanni", f"L'utilisateur **{user}** ({user_id}) a été débanni.", 0x2ECC71, interaction.user)
+    except Exception as e:
+        await interaction.response.send_message("❌ ID introuvable ou impossible de débannir ce membre.", ephemeral=True)
+        
 
 @bot.tree.command(name="slowmode", description="Définir le mode lent d'un salon")
 @is_server_owner()
