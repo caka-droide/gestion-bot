@@ -19,7 +19,7 @@ SALON_DEPART_ID = 1521181917095923857
 SALON_LOGS_ID = 1521181898725134419
 SALON_LOGS_TICKETS_ID = 1525912124923056288
 CATEGORY_TICKETS_ID = 1521181911773348010
-SALON_ATTENTE_ID = 0  # ⚠️ À REMPLIR : ID du salon où les tickets attendent qu'un staff les prenne en charge
+SALON_ATTENTE_ID = 1521181952697172161
 
 # ── Serveur Web pour Render ──────────────────────────────────────────────────
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
