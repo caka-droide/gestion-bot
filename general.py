@@ -4,6 +4,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
+import guild_settings
 
 
 class General(commands.Cog):
@@ -54,7 +55,9 @@ class General(commands.Cog):
     @app_commands.command(name="log", description="Redirige vers le salon des logs")
     @app_commands.checks.has_permissions(manage_messages=True)
     async def log_cmd(self, interaction: discord.Interaction):
-        salon_logs = interaction.guild.get_channel(config.SALON_LOGS_ID)
+        salon_logs = interaction.guild.get_channel(
+            guild_settings.get_id(interaction.guild.id, "SALON_LOGS_ID")
+        )
         embed = discord.Embed(
             title="📋 Suivi des Logs",
             description=f"Toutes les actions sont enregistrées dans {salon_logs.mention if salon_logs else 'le salon introuvable'}.",

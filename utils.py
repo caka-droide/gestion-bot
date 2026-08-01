@@ -5,10 +5,11 @@ from datetime import datetime
 import discord
 
 import config
+import guild_settings
 
 
 async def envoyer_log(guild, titre, description, couleur=config.Couleurs.DEFAUT, auteur=None):
-    salon_logs = guild.get_channel(config.SALON_LOGS_ID)
+    salon_logs = guild.get_channel(guild_settings.get_id(guild.id, "SALON_LOGS_ID"))
     if not salon_logs:
         return
     embed = discord.Embed(title=titre, description=description, color=couleur, timestamp=datetime.now())
@@ -18,7 +19,7 @@ async def envoyer_log(guild, titre, description, couleur=config.Couleurs.DEFAUT,
 
 
 async def envoyer_transcript(guild, salon_ticket, ferme_par):
-    salon_logs_tickets = guild.get_channel(config.SALON_LOGS_TICKETS_ID)
+    salon_logs_tickets = guild.get_channel(guild_settings.get_id(guild.id, "SALON_LOGS_TICKETS_ID"))
     if not salon_logs_tickets:
         return
 

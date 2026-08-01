@@ -4,6 +4,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
+import guild_settings
 
 
 class Invites(commands.Cog):
@@ -29,7 +30,9 @@ class Invites(commands.Cog):
         except discord.HTTPException:
             pass
 
-        salon_bienvenue = member.guild.get_channel(config.SALON_BIENVENUE_ID)
+        salon_bienvenue = member.guild.get_channel(
+            guild_settings.get_id(member.guild.id, "SALON_BIENVENUE_ID")
+        )
         if salon_bienvenue:
             embed = discord.Embed(
                 title="👋 Un nouveau membre vient d'arriver !",
@@ -65,7 +68,9 @@ class Invites(commands.Cog):
     async def on_member_remove(self, member: discord.Member):
         gid = str(member.guild.id)
         uid = str(member.id)
-        salon_depart = member.guild.get_channel(config.SALON_DEPART_ID)
+        salon_depart = member.guild.get_channel(
+            guild_settings.get_id(member.guild.id, "SALON_DEPART_ID")
+        )
         if salon_depart:
             embed = discord.Embed(
                 title="😢 Départ d'un membre",

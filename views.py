@@ -1,16 +1,17 @@
 """
 Composants d'interface persistants (boutons, menus, modals).
 
-Regroupés ici car ce sont tous des `discord.ui.View`/`Modal` avec
-`timeout=None` et des `custom_id` fixes : ils doivent être ré-enregistrés au
-démarrage via `bot.add_view(...)` pour rester fonctionnels après un redémarrage.
-Les garder ensemble facilite cette étape d'enregistrement dans `bot.py`.
+Regroupés ici car ce sont tous des discord.ui.View/Modal avec
+timeout=None et des custom_id fixes : ils doivent être ré-enregistrés au
+démarrage via bot.add_view(...) pour rester fonctionnels après un redémarrage.
+Les garder ensemble facilite cette étape d'enregistrement dans bot.py.
 """
 import asyncio
 
 import discord
 
 import config
+import guild_settings
 import utils
 from permissions import est_staff
 
@@ -18,7 +19,8 @@ from permissions import est_staff
 # ── Tickets ───────────────────────────────────────────────────────────────────
 async def creer_salon_ticket(guild: discord.Guild, membre: discord.Member, raison: str = None):
     """Crée le salon privé du ticket et y poste le message d'accueil."""
-    category = guild.get_channel(config.CATEGORY_TICKETS_ID)
+    category_id = guild_settings.get_id(guild.id, "CATEGORY_TICKETS_ID")
+    category = guild.get_channel(category_id)
     nom_salon = f"ticket-{membre.name.lower()}"
 
     overwrites = {
@@ -40,7 +42,9 @@ async def creer_salon_ticket(guild: discord.Guild, membre: discord.Member, raiso
     if raison:
         embed.add_field(name="Raison de l'ouverture", value=raison, inline=False)
 
-    message_ping = f"<@&{config.ROLE_STAFF_ID}> <@&{config.ROLE_ADMIN_STAFF_ID}>"
+    role_staff_id = guild_settings.get_id(guild.id, "ROLE_STAFF_ID")
+    role_admin_staff_id = guild_settings.get_id(guild.id, "ROLE_ADMIN_STAFF_ID")
+    message_ping = f"<@&{role_staff_id}> <@&{role_admin_staff_id}>"
     await ticket_channel.send(content=message_ping, embed=embed, view=CloseButton())
     await utils.envoyer_log(
         guild, "🎫 Ticket Ouvert", f"Ticket créé par {membre.mention} ({ticket_channel.mention})",
@@ -184,7 +188,8 @@ class TicketReasonModal(discord.ui.Modal, title="Ouvrir un ticket"):
 
     async def on_submit(self, interaction: discord.Interaction):
         guild = interaction.guild
-        salon_demande = guild.get_channel(config.SALON_DEMANDE_TICKET_ID)
+        salon_demande_id = guild_settings.get_id(guild.id, "SALON_DEMANDE_TICKET_ID")
+        salon_demande = guild.get_channel(salon_demande_id)
         if not salon_demande:
             await interaction.response.send_message(
                 "❌ Le salon de demandes de tickets est introuvable, contacte un admin.", ephemeral=True
