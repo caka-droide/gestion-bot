@@ -1,9 +1,9 @@
 """
 Point d'entrée du bot.
 
-Contient uniquement la "colle" : création du bot, chargement des cogs et des
-données, ré-enregistrement des Views persistantes, sync des commandes, et les
-gestionnaires d'erreurs globaux. Toute la logique métier vit dans les cogs.
+Contient uniquement la "colle" : création du bot, chargement des extensions
+(cogs), chargement des données, ré-enregistrement des Views persistantes,
+sync des commandes, et gestionnaires d'erreurs globaux.
 """
 import discord
 from discord.ext import commands
@@ -13,14 +13,18 @@ import config
 from storage import UpstashClient, DataStore
 from views import TicketButton, CloseButton, TicketRequestView, ReglementView, RoleMenuView
 
+# Les modules qui implémentent les cogs sont présents à la racine du repo
+# (activity.py, moderation.py, tickets.py, ...). On charge ces modules
+# directement (pas de package `cogs` dans ce dépôt) — évite ModuleNotFoundError
+# si Render / l'environnement n'expose pas un package `cogs`.
 EXTENSIONS = (
-    "cogs.activity",
-    "cogs.moderation",
-    "cogs.tickets",
-    "cogs.invites",
-    "cogs.giveaways",
-    "cogs.owner",
-    "cogs.general",
+    "activity",
+    "moderation",
+    "tickets",
+    "invites",
+    "giveaways",
+    "owner",
+    "general",
 )
 
 
