@@ -7,6 +7,12 @@ la guild, on retombe sur les constantes définies dans `config.py` — ce qui
 assure que ton serveur principal reste inchangé tant que tu ne changes pas
 les constantes ou n'ajoutes pas d'entrée pour ce serveur dans le JSON.
 
+Ajout d'options par-guild : ALLOWED_ADMINS et ALLOWED_STAFF permettent de
+donner des droits à des utilisateurs spécifiques (IDs) pour une guild sans
+leur attribuer un rôle. Utile pour ton cas où tu veux que ton compte soit
+administrateur sur le serveur secondaire sans modifier ton serveur
+principal.
+
 Le reste du comportement (décorateurs pour ctx / interactions...) est
 préservé.
 """
@@ -39,19 +45,44 @@ def _get_guild_setting(guild_id: int, key: str, default):
     """Renvoie la valeur configurée pour la guild (si présente), sinon default.
 
     Les clés attendues sont : ROLE_STAFF_ID, ROLE_ADMIN_STAFF_ID,
-    CATEGORY_TICKETS_ID (noms en clair pour rester compatibles avec
-    l'exemple JSON ci-dessous).
+    CATEGORY_TICKETS_ID, ALLOWED_ADMINS, ALLOWED_STAFF.
     """
     return _GUILD_SETTINGS.get(str(guild_id), {}).get(key, default)
+
+
+def _ids_from_setting(guild_id: int, key: str):
+    """Retourne un set d'entiers pour une clé de liste d'IDs dans le JSON.
+
+    Si la valeur n'est pas présente, renvoie un set vide. Tente de caster en
+    int pour tolérer des nombres encodés comme chaînes.
+    """
+    raw = _get_guild_setting(guild_id, key, [])
+    if not isinstance(raw, (list, tuple, set)):
+        return set()
+    ids = set()
+    for v in raw:
+        try:
+            ids.add(int(v))
+        except Exception:
+            continue
+    return ids
 
 
 def _est_staff(membre: discord.Member) -> bool:
     if membre.id == membre.guild.owner_id:
         return True
+    # Rôles configurés (fallback sur config.py)
     staff_id = _get_guild_setting(membre.guild.id, "ROLE_STAFF_ID", config.ROLE_STAFF_ID)
     admin_id = _get_guild_setting(membre.guild.id, "ROLE_ADMIN_STAFF_ID", config.ROLE_ADMIN_STAFF_ID)
     roles_ids = {r.id for r in membre.roles}
-    return staff_id in roles_ids or admin_id in roles_ids
+    if staff_id in roles_ids or admin_id in roles_ids:
+        return True
+    # Overrides par utilisateur
+    allowed_staff = _ids_from_setting(membre.guild.id, "ALLOWED_STAFF")
+    allowed_admins = _ids_from_setting(membre.guild.id, "ALLOWED_ADMINS")
+    if membre.id in allowed_staff or membre.id in allowed_admins:
+        return True
+    return False
 
 
 def _est_admin_staff(membre: discord.Member) -> bool:
@@ -59,7 +90,13 @@ def _est_admin_staff(membre: discord.Member) -> bool:
         return True
     admin_id = _get_guild_setting(membre.guild.id, "ROLE_ADMIN_STAFF_ID", config.ROLE_ADMIN_STAFF_ID)
     roles_ids = {r.id for r in membre.roles}
-    return admin_id in roles_ids
+    if admin_id in roles_ids:
+        return True
+    # Overrides par utilisateur
+    allowed_admins = _ids_from_setting(membre.guild.id, "ALLOWED_ADMINS")
+    if membre.id in allowed_admins:
+        return True
+    return False
 
 
 def est_staff(membre: discord.Member) -> bool:
@@ -92,7 +129,7 @@ def is_admin_staff_or_higher():
     return commands.check(predicate)
 
 
-# ── Décorateurs pour commandes slash (`interaction`) ─────────────────────────
+# ── Décorateurs pour commandes slash (`interaction`) ────��────────────────────
 def is_staff_or_higher_app():
     def predicate(interaction: discord.Interaction):
         return _est_staff(interaction.user)
