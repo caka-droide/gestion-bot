@@ -33,6 +33,35 @@ def _fmt_ts(iso: str) -> str:
         return "date inconnue"
 
 
+def count_new_invites(store, guild_id: int, user_id: int, since_ts: float) -> int:
+    """Compte les invitations *effectives* (nouveaux membres arrivés) faites
+    par `user_id` sur la guild `guild_id` depuis l'instant `since_ts`
+    (timestamp UNIX, ex : l'heure de lancement d'un giveaway).
+
+    Ne touche à aucune donnée existante : lit simplement les entrées
+    "joined" déjà enregistrées par le tracker d'invites habituel (+i).
+    Les entrées sans horodatage ("at") sont des invitations enregistrées
+    avant l'ajout de l'horodatage : elles sont forcément antérieures à
+    `since_ts` et donc ignorées ici (elles ne peuvent pas être "nouvelles").
+    """
+    gid, uid = str(guild_id), str(user_id)
+    total = 0
+    for data in store.invites.get(gid, {}).values():
+        if data.get("inviter_id") != uid:
+            continue
+        for entry in data.get("joined", []):
+            at = _entry_time(entry)
+            if not at:
+                continue
+            try:
+                ts = datetime.fromisoformat(at).timestamp()
+            except (ValueError, TypeError):
+                continue
+            if ts >= since_ts:
+                total += 1
+    return total
+
+
 class Invites(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
